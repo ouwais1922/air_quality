@@ -1,61 +1,112 @@
-import pandas as pd
 import psycopg2
-from sqlalchemy import create_engine
-import random
+from faker import Faker
+from random import randint, uniform
+import datetime
 
-# CSV file path
-csv_file_path = '../dataset/covid.csv'
-# PostgreSQL connection parameters
-postgres_connection_params = {
-    'host': '10.121.23.200',
-    'port': '5432',
-    'user': 'postgres',
-    'password': 'postgres',
-    'database': 'covid',
-}
 
-# Read CSV file into a Pandas DataFrame
-df = pd.read_csv(csv_file_path)
-
-# Connect to PostgreSQL database
-engine = create_engine(
-    f"postgresql+psycopg2://{postgres_connection_params['user']}:{postgres_connection_params['password']}@{postgres_connection_params['host']}:{postgres_connection_params['port']}/{postgres_connection_params['database']}"
+# Connect to the PostgreSQL database
+conn = psycopg2.connect(
+ host="localhost",
+    database="newdb",
+    user="postgres",
+    password="postgres"
 )
+cursor = conn.cursor()
 
-# Insert data into 'cities' table
-df_cities = df[['Country', 'City']].drop_duplicates().reset_index(drop=True)
-df_cities.to_sql('cities', engine, if_exists='replace', index=False)
+# Create a Faker instance
+fake = Faker()
 
-# Insert data into 'measurements' table
-df_measurements = df[['Date', 'Country', 'City', 'Specie', 'count', 'min', 'max', 'median', 'variance']]
-df_measurements.to_sql('measurements', engine, if_exists='replace', index=False)
+# Function to generate random datetime within a range
+def random_date(start_date, end_date):
+    start_datetime = datetime.datetime.strptime(start_date, "%Y-%m-%d")
+    end_datetime = datetime.datetime.strptime(end_date, "%Y-%m-%d")
+    return fake.date_time_between_dates(datetime_start=start_datetime, datetime_end=end_datetime)
 
-# Generate random data for 'pollutant_metrics' and 'meteorological_metrics'
-num_records = 1000  # Adjust as needed
+# Function to generate random weather conditions
+def random_weather_condition():
+    conditions = ['Clear', 'Cloudy', 'Rainy', 'Snowy', 'Foggy']
+    return fake.random_element(elements=conditions)
 
-pollutant_metrics_data = []
-meteorological_metrics_data = []
+# Function to generate random metric values
+def generate_random_metrics():
+    return (
+        round(uniform(0, 100), 2),   # Min
+        round(uniform(100, 200), 2), # Max
+        round(uniform(50, 150), 2),  # Median
+        round(uniform(0, 10), 2)     # Standard Deviation
+    )
 
-for _ in range(num_records):
-    city_id = random.choice(df_cities.index)
-    measurement_id = random.choice(df_measurements.index)
-    pollutant_name = f'Pollutant_{random.randint(1, 5)}'
-    metric_name = f'Metric_{random.randint(1, 5)}'
-    unit = 'unit'
-    measurement_value = random.uniform(1.0, 100.0)
+# Insert data into pollutant_metrics table
+for metric_id in range(1, 6):
+    metric_values = generate_random_metrics()
+    cursor.execute("""
+        INSERT INTO pollutant_metrics (MetricID, MetricName, Min, Max, Median, Standard_Deviation)
+        VALUES (%s, %s, %s, %s, %s, %s)
+    """, (metric_id, f'Metric_{metric_id}', *metric_values))
 
-    # Print information about the row being created
-    print(f"Creating row - city_id: {city_id}, measurement_id: {measurement_id}, pollutant_name: {pollutant_name}, metric_name: {metric_name}, unit: {unit}, measurement_value: {measurement_value}")
+# Insert data into meteorological_metrics table
+for metric_id in range(6, 11):
+    metric_values = generate_random_metrics()
+    cursor.execute("""
+        INSERT INTO meteorological_metrics (MetricID, MetricName, Min, Max, Median, Standard_Deviation)
+        VALUES (%s, %s, %s, %s, %s, %s)
+    """, (metric_id, f'Metric_{metric_id}', *metric_values))
 
-    pollutant_metrics_data.append({'city_id': city_id, 'measurement_id': measurement_id, 'pollutant_name': pollutant_name, 'unit': unit, 'measurement_value': measurement_value})
-    meteorological_metrics_data.append({'city_id': city_id, 'measurement_id': measurement_id, 'metric_name': metric_name, 'unit': unit, 'measurement_value': measurement_value})
+# Insert data into city table
+for city_id in range(1, 11):
+    cursor.execute("""
+        INSERT INTO city (CityID, CityName, Region, Country)
+        VALUES (%s, %s, %s, %s)
+    """, (city_id, f'City_{city_id}', f'Region_{city_id}', f'Country_{city_id}'))
 
-# Insert data into 'pollutant_metrics' table
-df_pollutant_metrics = pd.DataFrame(pollutant_metrics_data)
-df_pollutant_metrics.to_sql('pollutant_metrics', engine, if_exists='replace', index=False)
+# Insert data into station table
+for station_id in range(1, 21):
+    cursor.execute("""
+        INSERT INTO station (StationID, StationName, Location)
+        VALUES (%s, %s, %s)
+    """, (station_id, f'Station_{station_id}', f'Location_{station_id}'))
 
-# Insert data into 'meteorological_metrics' table
-df_meteorological_metrics = pd.DataFrame(meteorological_metrics_data)
-df_meteorological_metrics.to_sql('meteorological_metrics', engine, if_exists='replace', index=False)
+# Insert data into time table
+for time_id in range(1, 101):
+    timestamp = random_date(start_date="2022-01-01", end_date="2023-12-31")
+    date, time = timestamp.date(), timestamp.time()
+    cursor.execute("""
+        INSERT INTO time (TimeID, Timestamp, Date, Time, Year, Month, Day, Hour)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+    """, (time_id, timestamp, date, time, timestamp.year, timestamp.month, timestamp.day, timestamp.hour))
 
-engine.dispose()
+# Insert data into data_entry table
+# Insert data into data_entry table
+for _ in range(10000):
+    city_id = randint(1, 10)
+    station_id = randint(1, 20)
+    time_id = randint(1, 100)
+
+    data_entry_values = (
+        city_id,
+        station_id,
+        time_id,
+        random_weather_condition(),
+        round(uniform(-10, 40), 2),
+        round(uniform(0, 100), 2),
+        round(uniform(0, 20), 2),
+        round(uniform(0, 50), 2),
+        round(uniform(900, 1100), 2),
+        fake.random_element(elements=['Good', 'Moderate', 'Poor', 'Very Poor', 'Hazardous']),
+        fake.text(),
+        randint(1, 5),
+        randint(6, 10)
+    )
+
+    cursor.execute("""
+        INSERT INTO data_entry 
+        (CityID, StationID, TimeID, WeatherCondition, Temperature, Humidity, 
+        WindSpeed, Visibility, AirPressure, DataQualityIndicator, Remarks, 
+        PollutionMetricID, MeteorologicalMetricID) 
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+    """, data_entry_values)
+
+
+# Commit the changes and close the connection
+conn.commit()
+conn.close()
